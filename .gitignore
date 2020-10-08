@@ -1,0 +1,9 @@
+*.backup
+./*.tfstate
+.terraform/
+.DS_Store
+*.tfplan
+*.tfstate*
+*.plan
+*~
+.terragrunt-cache
