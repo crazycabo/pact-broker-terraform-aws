@@ -1,6 +1,6 @@
 provider "aws" {
-  version = "~> 2.7"
   region  = "us-east-1"
+  profile = "profile_name"
 }
 
 resource "random_string" "snapshot_id" {
@@ -26,8 +26,8 @@ resource "aws_db_instance" "pact_broker" {
   backup_retention_period    = 7
   storage_encrypted          = false
   publicly_accessible        = true
-  db_subnet_group_name       = "${aws_db_subnet_group.pact_broker.name}"
-  vpc_security_group_ids     = ["${aws_security_group.pact_broker_database.id}"]
+  db_subnet_group_name       = aws_db_subnet_group.pact_broker.name
+  vpc_security_group_ids     = [aws_security_group.pact_broker_database.id]
   final_snapshot_identifier  = format("%s%s", "pact-broker-", random_string.snapshot_id.result)
 
   tags = {
@@ -46,7 +46,7 @@ resource "aws_db_subnet_group" "pact_broker" {
 
 resource "aws_security_group" "pact_broker_database" {
   # name   = "pact-broker-db"
-  vpc_id = "${aws_vpc.pact_broker.id}"
+  vpc_id = aws_vpc.pact_broker.id
 
   ingress {
     from_port   = 5432
@@ -59,7 +59,7 @@ resource "aws_security_group" "pact_broker_database" {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = ["${aws_security_group.pact_broker_ecs.id}"]
+    security_groups = [aws_security_group.pact_broker_ecs.id]
   }
 
   egress {
@@ -153,15 +153,15 @@ resource "aws_ecs_task_definition" "pact_broker" {
   network_mode             = "awsvpc"
   memory                   = 512
   cpu                      = 256
-  execution_role_arn       = "${aws_iam_role.ecsTaskExecutionRole.arn}"
+  execution_role_arn       = aws_iam_role.ecsTaskExecutionRole.arn
 
   depends_on = [aws_db_instance.pact_broker]  # Database must be present before initializing the broker.
 }
 
 resource "aws_ecs_service" "pact_broker" {
   name                               = "pact-broker-service"
-  cluster                            = "${aws_ecs_cluster.pact_broker.id}"
-  task_definition                    = "${aws_ecs_task_definition.pact_broker.arn}"
+  cluster                            = aws_ecs_cluster.pact_broker.id
+  task_definition                    = aws_ecs_task_definition.pact_broker.arn
   launch_type                        = "FARGATE"
   desired_count                      = 2
   deployment_minimum_healthy_percent = 100
@@ -174,18 +174,20 @@ resource "aws_ecs_service" "pact_broker" {
 
   network_configuration {
     subnets          = [
-      "${aws_subnet.pact_broker_a.id}",
-      "${aws_subnet.pact_broker_b.id}"
+      aws_subnet.pact_broker_a.id,
+      aws_subnet.pact_broker_b.id
     ]
     assign_public_ip = true
-    security_groups = ["${aws_security_group.pact_broker_ecs.id}"]
+    security_groups = [aws_security_group.pact_broker_ecs.id]
   }
 
   load_balancer {
-    target_group_arn = "${aws_lb_target_group.pact_broker.arn}"
-    container_name   = "${aws_ecs_task_definition.pact_broker.family}"
+    target_group_arn = aws_lb_target_group.pact_broker.arn
+    container_name   = aws_ecs_task_definition.pact_broker.family
     container_port   = 9292
   }
+
+  depends_on = [aws_alb.pact_broker]
 }
 
 resource "aws_appautoscaling_target" "pact_broker" {
@@ -222,7 +224,7 @@ resource "aws_security_group" "pact_broker_ecs" {
     from_port       = 0
     to_port         = 0
     protocol        = "-1"
-    security_groups = ["${aws_security_group.pact_broker_alb.id}"]
+    security_groups = [aws_security_group.pact_broker_alb.id]
   }
 
   egress {
@@ -239,7 +241,7 @@ resource "aws_security_group" "pact_broker_ecs" {
 
 resource "aws_iam_role" "ecsTaskExecutionRole" {
   name               = "pact-broker-ecs-task-execution-role"
-  assume_role_policy = "${data.aws_iam_policy_document.assume_role_policy.json}"
+  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
 }
 
 data "aws_iam_policy_document" "assume_role_policy" {
@@ -254,7 +256,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
 }
 
 resource "aws_iam_role_policy_attachment" "ecsTaskExecutionRole_policy" {
-  role       = "${aws_iam_role.ecsTaskExecutionRole.name}"
+  role       = aws_iam_role.ecsTaskExecutionRole.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
@@ -273,49 +275,49 @@ resource "aws_vpc" "pact_broker" {
 }
 
 resource "aws_internet_gateway" "pact_broker" {
-  vpc_id = "${aws_vpc.pact_broker.id}"
+  vpc_id = aws_vpc.pact_broker.id
 }
 
 # Subnet A
 resource "aws_subnet" "pact_broker_a" {
-  vpc_id = "${aws_vpc.pact_broker.id}"
+  vpc_id = aws_vpc.pact_broker.id
   cidr_block = "10.1.0.0/20"
   map_public_ip_on_launch = "true"
   availability_zone = "us-east-1a"
 }
 
 resource "aws_route_table" "pact_broker_a" {
-  vpc_id = "${aws_vpc.pact_broker.id}"
+  vpc_id = aws_vpc.pact_broker.id
   route {
       cidr_block = "0.0.0.0/0"
-      gateway_id = "${aws_internet_gateway.pact_broker.id}"
+      gateway_id = aws_internet_gateway.pact_broker.id
   }
 }
 
 resource "aws_route_table_association" "pact_broker_a" {
-  subnet_id      = "${aws_subnet.pact_broker_a.id}"
-  route_table_id = "${aws_route_table.pact_broker_a.id}"
+  subnet_id      = aws_subnet.pact_broker_a.id
+  route_table_id = aws_route_table.pact_broker_a.id
 }
 
 # Subnet B
 resource "aws_subnet" "pact_broker_b" {
-  vpc_id = "${aws_vpc.pact_broker.id}"
+  vpc_id = aws_vpc.pact_broker.id
   cidr_block = "10.1.16.0/20"
   map_public_ip_on_launch = "true"
   availability_zone = "us-east-1b"
 }
 
 resource "aws_route_table" "pact_broker_b" {
-  vpc_id = "${aws_vpc.pact_broker.id}"
+  vpc_id = aws_vpc.pact_broker.id
   route {
       cidr_block = "0.0.0.0/0"
-      gateway_id = "${aws_internet_gateway.pact_broker.id}"
+      gateway_id = aws_internet_gateway.pact_broker.id
   }
 }
 
 resource "aws_route_table_association" "pact_broker_b" {
-  subnet_id      = "${aws_subnet.pact_broker_b.id}"
-  route_table_id = "${aws_route_table.pact_broker_b.id}"
+  subnet_id      = aws_subnet.pact_broker_b.id
+  route_table_id = aws_route_table.pact_broker_b.id
 }
 
 ########################################
@@ -326,10 +328,10 @@ resource "aws_alb" "pact_broker" {
   name               = "pact-broker-load-balancer"
   load_balancer_type = "application"
   subnets = [
-    "${aws_subnet.pact_broker_a.id}",
-    "${aws_subnet.pact_broker_b.id}"
+    aws_subnet.pact_broker_a.id,
+    aws_subnet.pact_broker_b.id
   ]
-  security_groups = ["${aws_security_group.pact_broker_alb.id}"]
+  security_groups = [aws_security_group.pact_broker_alb.id]
 }
 
 resource "aws_security_group" "pact_broker_alb" {
@@ -360,7 +362,7 @@ resource "aws_lb_target_group" "pact_broker" {
   port        = 9292
   protocol    = "HTTP"
   target_type = "ip"
-  vpc_id      = "${aws_vpc.pact_broker.id}"
+  vpc_id      = aws_vpc.pact_broker.id
   health_check {
     matcher = "200,301,302"
     path = "/diagnostic/status/heartbeat"
@@ -368,12 +370,12 @@ resource "aws_lb_target_group" "pact_broker" {
 }
 
 resource "aws_lb_listener" "pact_broker" {
-  load_balancer_arn = "${aws_alb.pact_broker.arn}"
+  load_balancer_arn = aws_alb.pact_broker.arn
   port              = "80"
   protocol          = "HTTP"
   default_action {
     type             = "forward"
-    target_group_arn = "${aws_lb_target_group.pact_broker.arn}"
+    target_group_arn = aws_lb_target_group.pact_broker.arn
   }
 }
 
